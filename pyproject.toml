@@ -1,0 +1,6 @@
+[project]
+name = "llm-bedrock-anthropic"
+version = "0.1"
+
+[project.entry-points.llm]
+markov = "llm_bedrock_anthropic"
