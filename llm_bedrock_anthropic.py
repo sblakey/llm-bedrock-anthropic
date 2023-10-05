@@ -17,6 +17,7 @@ def register_models(register):
     register(BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude",))
 
 class BedrockClaude(llm.Model):
+    can_stream: bool = True
 
     # TODO: expose other Options
     class Options(llm.Options):
@@ -52,11 +53,25 @@ class BedrockClaude(llm.Model):
             "max_tokens_to_sample": prompt.options.max_tokens_to_sample,
         }
         prompt.prompt_json = prompt_json
-        bedrock_response = client.invoke_model(
+        if stream:
+            bedrock_response = client.invoke_model_with_response_stream(
+                modelId=self.model_id,
+                body=json.dumps(prompt_json))
+            chunks = bedrock_response.get('body')
+
+            for event in chunks:
+                chunk = event.get('chunk')
+                if chunk:
+                    response = json.loads(chunk.get('bytes').decode())
+                    completion= response['completion']
+                    yield completion
+
+        else:
+            bedrock_response = client.invoke_model(
             modelId=self.model_id,
             body=json.dumps(prompt_json),
         )
-        body = bedrock_response['body'].read()
-        response.response_json = json.loads(body)
-        completion = response.response_json['completion']
-        yield completion
+            body = bedrock_response['body'].read()
+            response.response_json = json.loads(body)
+            completion = response.response_json['completion']
+            yield completion
