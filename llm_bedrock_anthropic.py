@@ -12,9 +12,9 @@ AI_PROMPT = "\n\nAssistant:"
 
 @llm.hookimpl
 def register_models(register):
-    register(BedrockClaude("anthropic.claude-instant-v1"), aliases=("bedrock-claude-instant",))
+    register(BedrockClaude("anthropic.claude-instant-v1"), aliases=("bedrock-claude-instant", 'bci'))
     register(BedrockClaude("anthropic.claude-v1"), aliases=("bedrock-claude-v1",))
-    register(BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude",))
+    register(BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude", 'bc'))
 
 class BedrockClaude(llm.Model):
     can_stream: bool = True
@@ -47,6 +47,15 @@ class BedrockClaude(llm.Model):
 
     def execute(self, prompt, stream, response, conversation):
         client = boto3.client('bedrock-runtime')
+
+        # Claude 2 does not currently really support system prompts:
+        # https://docs.anthropic.com/claude/docs/constructing-a-prompt#system-prompt-optional
+        # so what we do instead is put what would be the system prompt in the first line of the
+        # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
+        # `-s`, `-t` and `--save` flags. 
+        if prompt.system:
+            prompt.prompt = prompt.system + '\n' + prompt.prompt
+
         prompt_str = "".join(self.generate_prompt_messages(prompt.prompt, conversation))
         prompt_json = {
             "prompt": prompt_str,
