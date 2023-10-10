@@ -2,5 +2,21 @@
 name = "llm-bedrock-anthropic"
 version = "0.1"
 
+description = "LLM plugin for Anthropic's Claude on AWS Bedrock"
+readme = "README.md"
+authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"}]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License"
+]
+
+dependencies = [
+    "llm",
+    "boto3 >= 1.28.60",
+]
+
+[project.urls]
+Homepage = "https://github.com/sblakey/llm-bedrock-anthropic"
+
 [project.entry-points.llm]
-markov = "llm_bedrock_anthropic"
+bedrock_claude = "llm_bedrock_anthropic"
