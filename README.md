@@ -1,4 +1,7 @@
-# llm-bedrock-claude
+# llm-bedrock-anthropic
+
+[![PyPI](https://img.shields.io/pypi/v/llm-bedrock-anthropic.svg)](https://pypi.org/project/llm-bedrock-anthropic/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/sblakey/llm-bedrock-anthropic/blob/main/LICENSE)
 
 Plugin for [LLM](https://llm.datasette.io/) adding support for Anthropic's Claude models.
 
@@ -6,7 +9,7 @@ Plugin for [LLM](https://llm.datasette.io/) adding support for Anthropic's Claud
 
 Install this plugin in the same environment as LLM. From the current directory
 ```bash
-llm install -e .
+llm install llm-bedrock-anthropic
 ```
 ## Configuration
 
