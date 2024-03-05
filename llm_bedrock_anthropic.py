@@ -18,8 +18,8 @@ def register_models(register):
         aliases=("bedrock-claude-instant", "bci"),
     )
     register(
-        BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude-v2-0")
-    )  # . doesn't seem to work as an alias
+        BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude-v2-0",)
+    )
     register(
         BedrockClaude("anthropic.claude-v2:1"),
         aliases=("bedrock-claude-v2.1", "bedrock-claude-v2",),
