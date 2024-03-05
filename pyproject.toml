@@ -1,6 +1,6 @@
 [project]
 name = "llm-bedrock-anthropic"
-version = "0.1"
+version = "0.3"
 
 description = "LLM plugin for Anthropic's Claude on AWS Bedrock"
 readme = "README.md"
