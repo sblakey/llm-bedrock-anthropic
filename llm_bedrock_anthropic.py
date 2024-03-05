@@ -18,10 +18,10 @@ def register_models(register):
       aliases=("bedrock-claude-instant", 'bci'),
     )
     register(BedrockClaude("anthropic.claude-v1"), aliases=("bedrock-claude-v1",))
-    register(BedrockClaude("anthropic.claude-v2"), aliases=('bedrock-claude-v2.0'))
+    register(BedrockClaude("anthropic.claude-v2"), aliases=('bedrock-claude-v2.0',))
     register(BedrockClaude("anthropic.claude-v2:1"),
-             aliases=('bedrock-claude-v2.1', 'bedrock-claude-v2', 'bedrock-claude', 'bc'))
-    register(BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0"), aliases=('bedrock-claude-v3-sonnet',))
+             aliases=('bedrock-claude-v2.1', 'bedrock-claude-v2'))
+    register(BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0"), aliases=('bedrock-claude-v3-sonnet', 'bedrock-claude', 'bc'))
 
 
 class BedrockClaude(llm.Model):

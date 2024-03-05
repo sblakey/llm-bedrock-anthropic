@@ -1,6 +1,6 @@
 [project]
 name = "llm-bedrock-anthropic"
-version = "0.3"
+version = "0.4"
 
 description = "LLM plugin for Anthropic's Claude on AWS Bedrock"
 readme = "README.md"
@@ -13,6 +13,7 @@ classifiers = [
 dependencies = [
     "llm",
     "boto3 >= 1.28.60",
+    "pydantic>=1.9.0, <3",
 ]
 
 [project.urls]
