@@ -21,6 +21,7 @@ def register_models(register):
     register(BedrockClaude("anthropic.claude-v2"), aliases=('bedrock-claude-v2.0'))
     register(BedrockClaude("anthropic.claude-v2:1"),
              aliases=('bedrock-claude-v2.1', 'bedrock-claude-v2', 'bedrock-claude', 'bc'))
+    register(BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0"), aliases=('bedrock-claude-v3-sonnet',))
 
 
 class BedrockClaude(llm.Model):
@@ -49,17 +50,44 @@ class BedrockClaude(llm.Model):
 
         yield self.build_prompt(prompt)
 
+    def generate_prompt_messages_v3(self, prompt, conversation):
+        if conversation:
+            for response in conversation.responses:
+                yield {
+                    "role": "user",
+                    "content": response.prompt.prompt
+                }
+                yield {
+                    "role": "assistant",
+                    "content": response.text()
+                }
+
+        yield {
+            "role": "user",
+            "content": prompt
+        }
+
+
     def build_prompt(self, human, ai=""):
         return f"{HUMAN_PROMPT}{human}{AI_PROMPT}{ai}"
 
+    # def build_prompt_v3(self, human, ai=""):
+    #     return f"{HUMAN_PROMPT}{human}{AI_PROMPT}{ai}"
+
     def execute(self, prompt, stream, response, conversation):
+        if self.model_id.startswith("anthropic.claude-3"):
+            return self.execute_v3(prompt, stream, response, conversation)
+        else:
+            return self.execute_v1v2(prompt, stream, response, conversation)
+
+    def execute_v1v2(self, prompt, stream, response, conversation):
         client = boto3.client('bedrock-runtime')
 
         # Claude 2 does not currently really support system prompts:
         # https://docs.anthropic.com/claude/docs/constructing-a-prompt#system-prompt-optional
         # so what we do instead is put what would be the system prompt in the first line of the
         # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
-        # `-s`, `-t` and `--save` flags. 
+        # `-s`, `-t` and `--save` flags.
         if prompt.system:
             prompt.prompt = prompt.system + '\n' + prompt.prompt
 
@@ -82,6 +110,39 @@ class BedrockClaude(llm.Model):
                     completion = response["completion"]
                     yield completion
 
+        else:
+            bedrock_response = client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(prompt_json),
+            )
+            body = bedrock_response["body"].read()
+            response.response_json = json.loads(body)
+            completion = response.response_json["completion"]
+            yield completion
+
+    def execute_v3(self, prompt, stream, response, conversation):
+        client = boto3.client('bedrock-runtime')
+
+        prompt_list = list(self.generate_prompt_messages_v3(prompt.prompt, conversation))
+        prompt_json = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": prompt.options.max_tokens_to_sample,
+            "system": prompt.system if prompt.system else "",
+            "messages": prompt_list
+        }
+        prompt.prompt_json = prompt_json
+        if stream:
+            bedrock_response = client.invoke_model_with_response_stream(
+                modelId=self.model_id, body=json.dumps(prompt_json)
+            )
+            chunks = bedrock_response.get("body")
+
+            for event in chunks:
+                chunk = event.get("chunk")
+                if chunk:
+                    response = json.loads(chunk.get("bytes").decode())
+                    completion = response["delta"]["text"] if response["type"] == "content_block_delta" else ""
+                    yield completion
         else:
             bedrock_response = client.invoke_model(
                 modelId=self.model_id,
