@@ -112,6 +112,7 @@ class BedrockClaude(llm.Model):
         encoded_data = json.dumps(body)
         prompt.prompt_json = encoded_data
 
+        client = boto3.client('bedrock-runtime')
         if stream:
             bedrock_response = client.invoke_model_with_response_stream(
                 modelId=self.model_id, body=prompt.prompt_json
