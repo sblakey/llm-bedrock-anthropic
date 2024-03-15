@@ -35,6 +35,15 @@ def register_models(register):
             "bc",
         ),
     )
+    register(
+        BedrockClaude("anthropic.claude-3-haiku-20240307-v1:0"),
+        aliases=(
+            "claude-v3-haiku",
+            "claude-haiku",
+            "haiku",
+            "h",
+        ),
+    )    
 
 class BedrockClaude(llm.Model):
     can_stream: bool = True
