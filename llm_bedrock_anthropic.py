@@ -38,10 +38,10 @@ def register_models(register):
     register(
         BedrockClaude("anthropic.claude-3-haiku-20240307-v1:0"),
         aliases=(
-            "claude-v3-haiku",
-            "claude-haiku",
-            "haiku",
-            "h",
+            "bedrock-claude-v3-haiku",
+            "bedrock-claude-haiku",
+            "bedrock-haiku",
+            "bh",
         ),
     )    
 
