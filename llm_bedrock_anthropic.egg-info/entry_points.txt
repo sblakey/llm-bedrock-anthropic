@@ -1,0 +1,2 @@
+[llm]
+bedrock_claude = llm_bedrock_anthropic
