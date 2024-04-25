@@ -64,6 +64,10 @@ class BedrockClaude(llm.Model):
             description="The maximum number of tokens to generate before stopping",
             default=8191,  # Bedrock complained when I passed a higher number into claude-instant
         )
+        bedrock_model_id: Optional[str] = Field(
+            description="Bedrock modelId or ARN of base, custom, or provisioned model",
+            default=None,
+        )
 
         @field_validator("max_tokens_to_sample")
         def validate_length(cls, max_tokens_to_sample):
@@ -132,9 +136,10 @@ class BedrockClaude(llm.Model):
         prompt.prompt_json = encoded_data
 
         client = boto3.client('bedrock-runtime')
+        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
         if stream:
             bedrock_response = client.invoke_model_with_response_stream(
-                modelId=self.model_id, body=prompt.prompt_json
+                modelId=bedrock_model_id, body=prompt.prompt_json
             )
             chunks = bedrock_response.get("body")
 
@@ -147,7 +152,7 @@ class BedrockClaude(llm.Model):
 
         else:
             bedrock_response = client.invoke_model(
-                modelId=self.model_id, body=prompt.prompt_json
+                modelId=bedrock_model_id, body=prompt.prompt_json
             )
             body = bedrock_response["body"].read()
             response.response_json = json.loads(body)
@@ -166,9 +171,10 @@ class BedrockClaude(llm.Model):
         if prompt.system:
             prompt_json.update({"system": prompt.system})
         prompt.prompt_json = prompt_json
+        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
         if stream:
             bedrock_response = client.invoke_model_with_response_stream(
-                modelId=self.model_id, body=json.dumps(prompt_json)
+                modelId=bedrock_model_id, body=json.dumps(prompt_json)
             )
             chunks = bedrock_response.get("body")
 
@@ -181,7 +187,7 @@ class BedrockClaude(llm.Model):
                             yield response["delta"]["text"]
         else:
             bedrock_response = client.invoke_model(
-                modelId=self.model_id,
+                modelId=bedrock_model_id,
                 body=json.dumps(prompt_json),
             )
             body = bedrock_response["body"].read()
