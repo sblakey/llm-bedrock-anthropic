@@ -5,6 +5,9 @@
 
 Plugin for [LLM](https://llm.datasette.io/) adding support for Anthropic's Claude models.
 
+## New: claude opus model 
+### claude-3-opus available on us-west-2
+
 ## Installation
 
 Install this plugin in the same environment as LLM. From the current directory
