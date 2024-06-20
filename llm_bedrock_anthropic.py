@@ -31,8 +31,14 @@ def register_models(register):
             "bedrock-claude-v3-sonnet",
             "bedrock-claude-sonnet",
             "bedrock-sonnet",
-            "bedrock-claude"
+            "bedrock-claude",
             "bc",
+        ),
+    )
+    register(
+        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0"),
+        aliases=(
+            "bedrock-claude-v3.5-sonnet",
         ),
     )
     register(
