@@ -51,3 +51,14 @@ llm -m bedrock-claude -o max_tokens_to_sample 20 "Sing me the alphabet"
 A B C D E F G
 H I J
 ```
+
+- `bedrock_model_id`: allows you to override the `model_id` passed to Bedrock.
+
+Can be a base model ID or ARN from https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns
+
+Can also be an ARN of provisioned throughput for a base or custom model.
+
+Use it like this:
+```bash
+llm -m bedrock-claude-haiku -o bedrock_model_id anthropic.claude-3-sonnet-20240229-v1:0 "Remind me how to post a new version to PyPI"
+```
