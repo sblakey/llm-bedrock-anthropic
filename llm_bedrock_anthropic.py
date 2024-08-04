@@ -61,6 +61,7 @@ def register_models(register):
         ),
     )    
 
+
 class BedrockClaude(llm.Model):
     can_stream: bool = True
 
@@ -74,6 +75,10 @@ class BedrockClaude(llm.Model):
             description="Bedrock modelId or ARN of base, custom, or provisioned model",
             default=None,
         )
+        bedrock_image_file: Optional[str] = Field(
+            description="Add the given image file to the prompt.",
+            default=None,
+        )
 
         @field_validator("max_tokens_to_sample")
         def validate_length(cls, max_tokens_to_sample):
@@ -84,7 +89,8 @@ class BedrockClaude(llm.Model):
     def __init__(self, model_id):
         self.model_id = model_id
 
-    def build_messages(self, prompt, conversation) -> List[dict]:
+    @staticmethod
+    def build_messages(prompt, conversation) -> List[dict]:
         messages = []
         if conversation:
             for response in conversation.responses:
@@ -100,6 +106,7 @@ class BedrockClaude(llm.Model):
         messages.append({"role": "user", "content": prompt.prompt})
         return messages
 
+    @staticmethod
     def generate_prompt_messages_v3(self, prompt, conversation):
         def build_message(role, content):
             return {

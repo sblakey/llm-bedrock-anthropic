@@ -1,0 +1,10 @@
+LICENSE
+README.md
+llm_bedrock_anthropic.py
+pyproject.toml
+llm_bedrock_anthropic.egg-info/PKG-INFO
+llm_bedrock_anthropic.egg-info/SOURCES.txt
+llm_bedrock_anthropic.egg-info/dependency_links.txt
+llm_bedrock_anthropic.egg-info/entry_points.txt
+llm_bedrock_anthropic.egg-info/requires.txt
+llm_bedrock_anthropic.egg-info/top_level.txt
