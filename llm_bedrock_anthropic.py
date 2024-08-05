@@ -1,15 +1,14 @@
 from typing import Optional, List
 
+import json
+import mimetypes
+
 import boto3
 import llm
-import json
 from pydantic import Field, field_validator
 
-HUMAN_PROMPT = "\n\nHuman:"
-AI_PROMPT = "\n\nAssistant:"
 
 # Much of this code is derived from https://github.com/tomviner/llm-claude
-
 
 @llm.hookimpl
 def register_models(register):
@@ -28,7 +27,12 @@ def register_models(register):
         BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0"),
         aliases=(
             "bedrock-claude-v3-sonnet",
-            "bedrock-claude-v3-sonnet",
+        ),
+    )
+    register(
+        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0"),
+        aliases=(
+            "bedrock-claude-v3.5-sonnet",
             "bedrock-claude-sonnet",
             "bedrock-sonnet",
             "bedrock-claude",
@@ -36,15 +40,8 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0"),
-        aliases=(
-            "bedrock-claude-v3.5-sonnet",
-        ),
-    )
-    register(
         BedrockClaude("anthropic.claude-3-opus-20240229-v1:0"),
         aliases=(
-            "bedrock-claude-v3-opus",
             "bedrock-claude-v3-opus",
             "bedrock-claude-opus",
             "bedrock-opus",
@@ -67,15 +64,16 @@ class BedrockClaude(llm.Model):
 
     # TODO: expose other Options
     class Options(llm.Options):
+        # TODO: Make the defaults model-specific.
         max_tokens_to_sample: Optional[int] = Field(
             description="The maximum number of tokens to generate before stopping",
-            default=8191,  # Bedrock complained when I passed a higher number into claude-instant
+            default=4096,  # Bedrock complained when I passed a higher number into claudev3.5 Sonnet.
         )
         bedrock_model_id: Optional[str] = Field(
             description="Bedrock modelId or ARN of base, custom, or provisioned model",
             default=None,
         )
-        bedrock_image_file: Optional[str] = Field(
+        bedrock_attach_file: Optional[str] = Field(
             description="Add the given image file to the prompt.",
             default=None,
         )
@@ -90,36 +88,93 @@ class BedrockClaude(llm.Model):
         self.model_id = model_id
 
     @staticmethod
-    def build_messages(prompt, conversation) -> List[dict]:
+    def prompt_to_content(prompt):
+        """
+        Convert a llm.Prompt object to the content format expected by the Bedrock Converse API.
+        If we encounter the bedrock_attach_file option, detect the file type and use the
+        proper Bedrock Converse content type to attach the file to the prompt.
+
+        :param prompt: A llm Prompt objet.
+        :return: A content object that conforms to the Bedrock Converse API.
+        """
+        content = []
+        if prompt.options.bedrock_attach_file:
+            mime_type, _ = mimetypes.guess_type(prompt.options.bedrock_image_file)
+            if not mime_type:
+                raise ValueError(
+                    f"Unable to guess mime type for file: {prompt.options.bedrock_attach_file}"
+                )
+
+            file_type, file_format = mime_type.split("/")
+            if file_type != "image":
+                raise ValueError(
+                    f"Unsupported file type for file: {prompt.options.bedrock_attach_file}"
+                )
+            if file_format not in ['png', 'jpeg', 'gif', 'webp']:
+                raise ValueError(
+                    f"Unsupported image format for file: {prompt.options.bedrock_attach_file}"
+                )
+
+            with open(prompt.options.bedrock_image_file, "rb") as fp:
+                source_bytes = fp.read()
+
+            content.append(
+                {
+                    'image': {
+                        'format': file_format,
+                        'source': {
+                            'bytes': source_bytes
+                        }
+                    }
+                }
+            )
+
+        # Append the prompt text as a text content block.
+        content.append(
+            {
+                'text': prompt.prompt
+            }
+        )
+
+        return content
+
+    @staticmethod
+    def build_messages(prompt_content, conversation) -> List[dict]:
         messages = []
         if conversation:
             for response in conversation.responses:
+                if (
+                    'response_json' in response and
+                    response.response_json and
+                    'bedrock_user_content' in response.response_json
+                ):
+                    user_content = response.response_json['bedrock_user_content']
+                else:
+                    user_content = [
+                        {
+                            'text': response.prompt.prompt
+                        }
+                    ]
+                assistant_content = [
+                    {
+                        'text': response.text()
+                    }
+                ]
                 messages.extend(
                     [
                         {
                             "role": "user",
-                            "content": response.prompt.prompt,
+                            "content": user_content
                         },
-                        {"role": "assistant", "content": response.text()},
+                        {
+                            "role": "assistant",
+                            "content": assistant_content
+                        },
                     ]
                 )
-        messages.append({"role": "user", "content": prompt.prompt})
+
+        messages.append({"role": "user", "content": prompt_content})
         return messages
-
-    @staticmethod
-    def generate_prompt_messages_v3(self, prompt, conversation):
-        def build_message(role, content):
-            return {
-                "role": role,
-                "content": content
-            }
-
-        if conversation:
-            for response in conversation.responses:
-                yield build_message("user", response.prompt.prompt)
-                yield build_message("assistant", response.text())
-
-        yield build_message("user", prompt)
 
     def execute(self, prompt, stream, response, conversation):
         # Claude 2.0 and Claude Instant did not historically really support system prompts:
@@ -131,79 +186,50 @@ class BedrockClaude(llm.Model):
         # so what we do instead is put what would be the system prompt in the first line of the
         # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
         #  `-s`, `-t` and `--save` flags.
+        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
+
         if prompt.system and self.model_id in [
             "anthropic.claude-v2",
             "anthropic.claude-instant-v1",
         ]:
             prompt.prompt = prompt.system + "\n" + prompt.prompt
 
-        prompt.messages = self.build_messages(prompt, conversation)
+        prompt_content = self.prompt_to_content(prompt)
+        messages = self.build_messages(prompt_content, conversation)
 
-        body = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": prompt.options.max_tokens_to_sample,
-            "system": prompt.system or "",
-            "messages": prompt.messages,
+        # Preserve the Bedrock-specific user content dict so it can be re-used in
+        # future conversations.
+        response.response_json = {
+            'bedrock_user_content': prompt_content
         }
-        encoded_data = json.dumps(body)
-        prompt.prompt_json = encoded_data
 
-        client = boto3.client('bedrock-runtime')
-        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
-        if stream:
-            bedrock_response = client.invoke_model_with_response_stream(
-                modelId=bedrock_model_id, body=prompt.prompt_json
-            )
-            chunks = bedrock_response.get("body")
-
-            for event in chunks:
-                chunk = event.get("chunk")
-                response = json.loads(chunk.get("bytes").decode())
-                if response["type"] == "content_block_delta":
-                    completion = response["delta"]["text"]
-                    yield completion
-
-        else:
-            bedrock_response = client.invoke_model(
-                modelId=bedrock_model_id, body=prompt.prompt_json
-            )
-            body = bedrock_response["body"].read()
-            response.response_json = json.loads(body)
-            completion = response.response_json["content"][-1]["text"]
-            yield completion
-
-    def execute_v3(self, prompt, stream, response, conversation):
-        client = boto3.client('bedrock-runtime')
-
-        messages = list(self.generate_prompt_messages_v3(prompt.prompt, conversation))
-        prompt_json = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": prompt.options.max_tokens_to_sample,
-            "messages": messages
+        inference_config = {
+            'maxTokens': prompt.options.max_tokens_to_sample
         }
+
+        # Put together parameters for the Bedrock Converse API.
+        params = {
+            'modelId': bedrock_model_id,
+            'messages': messages,
+            'inferenceConfig': inference_config,
+        }
+
         if prompt.system:
-            prompt_json.update({"system": prompt.system})
-        prompt.prompt_json = prompt_json
-        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
-        if stream:
-            bedrock_response = client.invoke_model_with_response_stream(
-                modelId=bedrock_model_id, body=json.dumps(prompt_json)
-            )
-            chunks = bedrock_response.get("body")
+            params['system'] = [
+                {
+                    'text': prompt.system
+                }
+            ]
 
-            for event in chunks:
-                chunk = event.get("chunk")
-                if chunk:
-                    response = json.loads(chunk.get("bytes").decode())
-                    if response['type'] == 'content_block_delta':
-                        if response["delta"]['type'] == 'text_delta':
-                            yield response["delta"]["text"]
+        client = boto3.client('bedrock-runtime')
+        if stream:
+            bedrock_response = client.converse_stream(**params)
+            for event in bedrock_response['stream']:
+                (event_type, event_content), = event.items()
+                if event_type == "contentBlockDelta":
+                    completion = event_content["delta"]["text"]
+                    yield completion
         else:
-            bedrock_response = client.invoke_model(
-                modelId=bedrock_model_id,
-                body=json.dumps(prompt_json),
-            )
-            body = bedrock_response["body"].read()
-            response.response_json = json.loads(body)
-            completion = response.response_json["content"][0]["text"]
+            bedrock_response = client.converse(**params)
+            completion = bedrock_response['output']['message']['content'][-1]['text']
             yield completion
