@@ -2,6 +2,7 @@ from typing import Optional, List
 
 import json
 import mimetypes
+from base64 import b64encode, b64decode
 
 import boto3
 import llm
@@ -99,7 +100,7 @@ class BedrockClaude(llm.Model):
         """
         content = []
         if prompt.options.bedrock_attach_file:
-            mime_type, _ = mimetypes.guess_type(prompt.options.bedrock_image_file)
+            mime_type, _ = mimetypes.guess_type(prompt.options.bedrock_attach_file)
             if not mime_type:
                 raise ValueError(
                     f"Unable to guess mime type for file: {prompt.options.bedrock_attach_file}"
@@ -115,7 +116,7 @@ class BedrockClaude(llm.Model):
                     f"Unsupported image format for file: {prompt.options.bedrock_attach_file}"
                 )
 
-            with open(prompt.options.bedrock_image_file, "rb") as fp:
+            with open(prompt.options.bedrock_attach_file, "rb") as fp:
                 source_bytes = fp.read()
 
             content.append(
@@ -138,17 +139,60 @@ class BedrockClaude(llm.Model):
 
         return content
 
-    @staticmethod
-    def build_messages(prompt_content, conversation) -> List[dict]:
+    def encode_bytes(self, o):
+        """
+        Recursively replace any "bytes" dict attribute in the given object with a base64
+        encoded value as "bytes_b64". This is done to preserve the data during logging activities.
+
+        :param o: A Python object.
+        :return: A copy of the input, but with all "bytes" keys in dicts replaces by base64
+                 encoded values names "bytes".
+        """
+        if isinstance(o, list):
+            return [self.encode_bytes(i) for i in o]
+        elif isinstance(o, dict):
+            result = {}
+            for key, value in o.items():
+                if key == 'bytes':
+                    result['bytes_b64'] = b64encode(value).decode("utf-8")
+                else:
+                    result[key] = self.encode_bytes(value)
+            return result
+        else:
+            return o
+
+    def decode_bytes(self, o):
+        """
+        Recursively replace any "bytes_b64" dict attribute in the given object with a
+        base64 decoded value as "bytes". This is the reverse of the above, so the resulting
+        data can be sent to Bedrock in its expected form.
+
+        :param o: A Python object.
+        :return: A copy of the input, but with all "bytes_b64" keys in dicts replaced by base64
+                 decoded values names "bytes".
+        """
+        if isinstance(o, list):
+            return [self.decode_bytes(i) for i in o]
+        elif isinstance(o, dict):
+            result = {}
+            for key, value in o.items():
+                if key == 'bytes_b64':
+                    result['bytes'] = b64decode(value)
+                else:
+                    result[key] = self.decode_bytes(value)
+            return result
+        else:
+            return o
+
+    def build_messages(self, prompt_content, conversation) -> List[dict]:
         messages = []
         if conversation:
             for response in conversation.responses:
                 if (
-                    'response_json' in response and
                     response.response_json and
                     'bedrock_user_content' in response.response_json
                 ):
-                    user_content = response.response_json['bedrock_user_content']
+                    user_content = self.decode_bytes(response.response_json['bedrock_user_content'])
                 else:
                     user_content = [
                         {
@@ -197,10 +241,10 @@ class BedrockClaude(llm.Model):
         prompt_content = self.prompt_to_content(prompt)
         messages = self.build_messages(prompt_content, conversation)
 
-        # Preserve the Bedrock-specific user content dict so it can be re-used in
+        # Preserve the Bedrock-specific user content dict, so it can be re-used in
         # future conversations.
         response.response_json = {
-            'bedrock_user_content': prompt_content
+            'bedrock_user_content': self.encode_bytes(prompt_content)
         }
 
         inference_config = {
