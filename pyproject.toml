@@ -1,20 +1,21 @@
-[project]
+[tool.poetry]
 name = "llm-bedrock-anthropic"
 version = "0.4.4"
 
 description = "LLM plugin for Anthropic's Claude on AWS Bedrock"
 readme = "README.md"
-authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"}]
-license = {text = "Apache-2.0"}
+authors = ["Sean Blakey", "Will Sorenson"]
+license = "Apache-2.0"
 classifiers = [
     "License :: OSI Approved :: Apache Software License"
 ]
 
-dependencies = [
-    "llm",
-    "boto3 >=1.34.55",
-    "pydantic >= 2.0"
-]
+[tool.poetry.dependencies]
+python = "^3.8"
+llm = "^0.15"
+pydantic = "^2.8.2"
+boto3 = "^1.34.153"
+pillow = "^10.4.0"
 
 [project.urls]
 Homepage = "https://github.com/sblakey/llm-bedrock-anthropic"
