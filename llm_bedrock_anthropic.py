@@ -98,8 +98,8 @@ class BedrockClaude(llm.Model):
             description="Bedrock modelId or ARN of base, custom, or provisioned model",
             default=None,
         )
-        bedrock_attach_file: Optional[str] = Field(
-            description="Add the given image file to the prompt.",
+        bedrock_attach_files: Optional[str] = Field(
+            description="Attach the given image or document file (or files, separated by comma) to the prompt.",
             default=None,
         )
 
@@ -214,29 +214,31 @@ class BedrockClaude(llm.Model):
     def prompt_to_content(self, prompt):
         """
         Convert a llm.Prompt object to the content format expected by the Bedrock Converse API.
-        If we encounter the bedrock_attach_file option, detect the file type and use the
-        proper Bedrock Converse content type to attach the file to the prompt.
+        If we encounter the bedrock_attach_files option, detect the file type(s) and use the
+        proper Bedrock Converse content type to attach the file(s) to the prompt.
 
         :param prompt: A llm Prompt objet.
         :return: A content object that conforms to the Bedrock Converse API.
         """
         content = []
-        if prompt.options.bedrock_attach_file:
-            file_path = prompt.options.bedrock_attach_file
-            mime_type, _ = mimetypes.guess_type(file_path)
-            if not mime_type:
-                raise ValueError(
-                    f"Unable to guess mime type for file: {file_path}"
-                )
+        if prompt.options.bedrock_attach_files:
+            # Support multiple files separated by comma.
+            for file_path in prompt.options.bedrock_attach_files.split(','):
+                mime_type, _ = mimetypes.guess_type(file_path)
+                if not mime_type:
+                    raise ValueError(
+                        f"Unable to guess mime type for file: {file_path}"
+                    )
 
-            if mime_type.startswith("image/"):
-                content.append(self.image_path_to_content_block(file_path))
-            elif mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT:
-                content.append(self.document_path_to_content_block(file_path, mime_type))
-            else:
-                raise ValueError(
-                    f"Unsupported file type for file: {prompt.options.bedrock_attach_file}"
-                )
+                file_path = os.path.expanduser(file_path)
+                if mime_type.startswith("image/"):
+                    content.append(self.image_path_to_content_block(file_path))
+                elif mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT:
+                    content.append(self.document_path_to_content_block(file_path, mime_type))
+                else:
+                    raise ValueError(
+                        f"Unsupported file type for file: {file_path}"
+                    )
 
         # Append the prompt text as a text content block.
         content.append(
