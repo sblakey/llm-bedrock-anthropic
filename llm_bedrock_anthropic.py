@@ -1,12 +1,36 @@
+# Imports
+
 from typing import Optional, List
 
-import json
 import mimetypes
 from base64 import b64encode, b64decode
+from io import BytesIO
+import os
 
 import boto3
 import llm
 from pydantic import Field, field_validator
+from PIL import Image
+
+
+# Constants
+
+# See: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html
+BEDROCK_CONVERSE_IMAGE_FORMATS = ["png", "jpeg", "gif", "webp"]
+MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT = {
+    "application/pdf": "pdf",
+    "text/csv": "csv",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "text/html": "html",
+    "text/plain": "txt",
+    "text/markdown": "md",
+}
+
+# See: https://docs.anthropic.com/en/docs/build-with-claude/vision
+ANTHROPIC_MAX_IMAGE_LONG_SIZE = 1568
 
 
 # Much of this code is derived from https://github.com/tomviner/llm-claude
@@ -68,7 +92,7 @@ class BedrockClaude(llm.Model):
         # TODO: Make the defaults model-specific.
         max_tokens_to_sample: Optional[int] = Field(
             description="The maximum number of tokens to generate before stopping",
-            default=4096,  # Bedrock complained when I passed a higher number into claudev3.5 Sonnet.
+            default=4096,  # Bedrock complained when I passed a higher number into claude v3.5 Sonnet.
         )
         bedrock_model_id: Optional[str] = Field(
             description="Bedrock modelId or ARN of base, custom, or provisioned model",
@@ -89,7 +113,105 @@ class BedrockClaude(llm.Model):
         self.model_id = model_id
 
     @staticmethod
-    def prompt_to_content(prompt):
+    def load_and_preprocess_image(file):
+        """
+        Load and pre-process the given image for use with Anthropic models and the Bedrock
+        Converse API:
+        * Resize if needed.
+        * Convert into a supported format if needed.
+        * Do nothing if the image is already compatible.
+        Even if Bedrock can resize images for us, we do this here to avoid unnecessary
+        bandwidth and to support additional image file types.
+
+        :param file: An image file path.
+        :return: A bytes, image_format tuple containing the resulting image data and format.
+                 Use the original data/format if possible, and choose an appropriate format if
+                 the image needed to be resized.
+        """
+        with open(file, "rb") as fp:
+            img_bytes = fp.read()
+
+        with Image.open(BytesIO(img_bytes)) as img:
+            img_format = img.format
+            width, height = img.size
+            if width > ANTHROPIC_MAX_IMAGE_LONG_SIZE or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE:
+                # Resize the image while preserving the aspect ratio
+                img.thumbnail((ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE))
+
+            # Change format if necessary
+            if (
+                img_format.lower() in BEDROCK_CONVERSE_IMAGE_FORMATS and
+                img.size == (width, height)  # Original size, no resize needed
+            ):
+                return img_bytes, img_format.lower()
+
+            # Re-export the image with the appropriate format
+            with BytesIO() as buffer:
+                img.save(buffer, format='PNG')
+                return buffer.getvalue(), 'png'
+
+    def image_path_to_content_block(self, path):
+        """
+        Create a Bedrock Converse content block out of the given image file path.
+        :param path: A file path to an image file.
+        :return: A Bedrock Converse API content block containing the image.
+        """
+        source_bytes, file_format = self.load_and_preprocess_image(path)
+
+        return {
+            'image': {
+                'format': file_format,
+                'source': {
+                    'bytes': source_bytes
+                }
+            }
+        }
+
+    @staticmethod
+    def sanitize_file_name(file_path):
+        """
+        Generate a file name out of the given file path that conforms to the Bedrock
+        Converse API conventions:
+        * Alphanumeric characters
+        * Whitespace characters (no more than one in a row)
+        * Hyphens
+        * Parentheses
+        * Square brackets
+        * Maximum length of 200.
+        See also: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_DocumentBlock.html
+        :param file_path:
+        :return:
+        """
+        head, tail = os.path.split(file_path)
+        for c in tail:
+            if c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_()[]":
+                tail = tail.replace(c, "_")
+
+        if not tail:
+            return "file"
+
+        return tail[:200]
+
+    def document_path_to_content_block(self, file_path, mime_type):
+        """
+        Create a Bedrock Converse content block out of the given document file path.
+        :param file_path: A file path to a document file.
+        :param mime_type: The file’s MIME type.
+        :return: A Bedrock Converse API content block containing the document.
+        """
+        with open(file_path, "rb") as fp:
+            source_bytes = fp.read()
+        return {
+            'document': {
+                'format': MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
+                'name': self.sanitize_file_name(file_path),
+                'source': {
+                    'bytes': source_bytes
+                }
+            }
+        }
+
+    def prompt_to_content(self, prompt):
         """
         Convert a llm.Prompt object to the content format expected by the Bedrock Converse API.
         If we encounter the bedrock_attach_file option, detect the file type and use the
@@ -100,35 +222,21 @@ class BedrockClaude(llm.Model):
         """
         content = []
         if prompt.options.bedrock_attach_file:
-            mime_type, _ = mimetypes.guess_type(prompt.options.bedrock_attach_file)
+            file_path = prompt.options.bedrock_attach_file
+            mime_type, _ = mimetypes.guess_type(file_path)
             if not mime_type:
                 raise ValueError(
-                    f"Unable to guess mime type for file: {prompt.options.bedrock_attach_file}"
+                    f"Unable to guess mime type for file: {file_path}"
                 )
 
-            file_type, file_format = mime_type.split("/")
-            if file_type != "image":
+            if mime_type.startswith("image/"):
+                content.append(self.image_path_to_content_block(file_path))
+            elif mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT:
+                content.append(self.document_path_to_content_block(file_path, mime_type))
+            else:
                 raise ValueError(
                     f"Unsupported file type for file: {prompt.options.bedrock_attach_file}"
                 )
-            if file_format not in ['png', 'jpeg', 'gif', 'webp']:
-                raise ValueError(
-                    f"Unsupported image format for file: {prompt.options.bedrock_attach_file}"
-                )
-
-            with open(prompt.options.bedrock_attach_file, "rb") as fp:
-                source_bytes = fp.read()
-
-            content.append(
-                {
-                    'image': {
-                        'format': file_format,
-                        'source': {
-                            'bytes': source_bytes
-                        }
-                    }
-                }
-            )
 
         # Append the prompt text as a text content block.
         content.append(
@@ -225,7 +333,7 @@ class BedrockClaude(llm.Model):
         # https://docs.anthropic.com/claude/docs/constructing-a-prompt#system-prompt-optional
         #
         # As of the release of the Messages API, this seems like it has been fixed
-        # https://docs.anthropic.com/claude/docs/system-prompts but it is not documented that
+        # https://docs.anthropic.com/claude/docs/system-prompts, but it is not documented that
         # Claude Instant and 2.0 support it (and the wording implies that it doesn't)
         # so what we do instead is put what would be the system prompt in the first line of the
         # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
