@@ -98,7 +98,7 @@ class BedrockClaude(llm.Model):
             description="Bedrock modelId or ARN of base, custom, or provisioned model",
             default=None,
         )
-        bedrock_attach_files: Optional[str] = Field(
+        bedrock_attach: Optional[str] = Field(
             description="Attach the given image or document file (or files, separated by comma) to the prompt.",
             default=None,
         )
@@ -221,9 +221,9 @@ class BedrockClaude(llm.Model):
         :return: A content object that conforms to the Bedrock Converse API.
         """
         content = []
-        if prompt.options.bedrock_attach_files:
+        if prompt.options.bedrock_attach:
             # Support multiple files separated by comma.
-            for file_path in prompt.options.bedrock_attach_files.split(','):
+            for file_path in prompt.options.bedrock_attach.split(','):
                 mime_type, _ = mimetypes.guess_type(file_path)
                 if not mime_type:
                     raise ValueError(
