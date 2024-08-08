@@ -62,3 +62,17 @@ Use it like this:
 ```bash
 llm -m bedrock-claude-haiku -o bedrock_model_id anthropic.claude-3-sonnet-20240229-v1:0 "Remind me how to post a new version to PyPI"
 ```
+- `bedrock_attach`: allows you to attach one or more (comma-separated) image or document files to your prompt.
+
+See the Amazon Bedrock documentation for details about which file types are supported with which models: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html
+
+Use it like this:
+```bash
+llm -m bedrock-claude-haiku -o bedrock_attach cat.jpg "Describe this picture."
+```
+```bash
+llm -m bedrock-claude-haiku -o bedrock_attach cat.jpg,mouse.jpg "What do these animals have in common?"
+```
+```bash
+llm -m bedrock-claude-haiku -o bedrock_attach Model_Card_Claude_3_Addendum.pdf "Summarize this document."
+```
