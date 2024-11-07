@@ -1,10 +1,10 @@
 [project]
-name = "llm-bedrock-anthropic"
+name = "llm-bedrock-anthropic-v2"
 version = "0.4.4"
 
-description = "LLM plugin for Anthropic's Claude on AWS Bedrock"
+description = "LLM plugin for Anthropic's New Claude Models on AWS Bedrock"
 readme = "README.md"
-authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"}]
+authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"},{name = "Matt Cauthorn"}]
 license = {text = "Apache-2.0"}
 classifiers = [
     "License :: OSI Approved :: Apache Software License"
@@ -21,4 +21,4 @@ dependencies = [
 Homepage = "https://github.com/sblakey/llm-bedrock-anthropic"
 
 [project.entry-points.llm]
-bedrock_claude = "llm_bedrock_anthropic"
+bedrock_claude_v2 = "llm_bedrock_anthropic_v2"
