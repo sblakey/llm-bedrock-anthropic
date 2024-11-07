@@ -4,7 +4,7 @@ version = "0.4.4"
 
 description = "LLM plugin for Anthropic's New Claude Models on AWS Bedrock"
 readme = "README.md"
-authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"},{name = "Matt Cauthorn"}]
+authors = [{name = "Sean Blakey"}, {name = "Will Sorenson"}]
 license = {text = "Apache-2.0"}
 classifiers = [
     "License :: OSI Approved :: Apache Software License"

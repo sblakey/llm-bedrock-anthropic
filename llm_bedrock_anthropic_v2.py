@@ -37,6 +37,8 @@ ANTHROPIC_MAX_IMAGE_LONG_SIZE = 1568
 
 # New bedrock inference profiles added below. See
 # https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
+# For inference profiles, be sure and request access for each region for the profile.
+# https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html#inference-profiles-support-system
 
 @llm.hookimpl
 def register_models(register):
@@ -77,15 +79,6 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-5-sonnet-20241022-v2:0"),
-        aliases=(
-            "bedrock-claude-v3.5-sonnetv2",
-            "bedrock-sonnetv2",
-            "bedrock-claudev2",
-            "bcv2",
-        ),
-    )
-    register(
         BedrockClaude("anthropic.claude-3-opus-20240229-v1:0"),
         aliases=(
             "bedrock-claude-v3-opus",
@@ -108,7 +101,7 @@ def register_models(register):
         aliases=(
             "bedrock-claude-v3.5-haiku",
             "bedrock-haiku-v3.5",
-            "bhv3.5",
+            "bh-v3.5",
         ),
     )    
 
