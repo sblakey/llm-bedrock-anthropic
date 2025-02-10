@@ -131,7 +131,11 @@ class BedrockClaude(llm.Model):
     def __init__(self, model_id, supports_attachments=False):
         self.model_id = model_id
         self.supports_attachments = supports_attachments
-
+        if supports_attachments:
+            image_mime_types = {f"image/{fmt}" for fmt in BEDROCK_CONVERSE_IMAGE_FORMATS}
+            document_mime_types = set(MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT.keys())
+            self.attachment_types = image_mime_types.union(document_mime_types)
+    
     @staticmethod
     def load_and_preprocess_image(file):
         """
