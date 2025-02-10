@@ -37,32 +37,36 @@ ANTHROPIC_MAX_IMAGE_LONG_SIZE = 1568
 
 @llm.hookimpl
 def register_models(register):
+    # Claude 2 and earlier models (no attachment support)
     register(
-        BedrockClaude("anthropic.claude-instant-v1"),
+        BedrockClaude("anthropic.claude-instant-v1", supports_attachments=False),
         aliases=("bedrock-claude-instant", "bci"),
     )
     register(
-        BedrockClaude("anthropic.claude-v2"), aliases=("bedrock-claude-v2-0",)
+        BedrockClaude("anthropic.claude-v2", supports_attachments=False),
+        aliases=("bedrock-claude-v2-0",)
     )
     register(
-        BedrockClaude("anthropic.claude-v2:1"),
+        BedrockClaude("anthropic.claude-v2:1", supports_attachments=False),
         aliases=("bedrock-claude-v2.1", "bedrock-claude-v2",),
     )
+    
+    # Claude 3 models (with attachment support)
     register(
-        BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0"),
+        BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3-sonnet",
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-5-sonnet-20241022-v2:0"),
+        BedrockClaude("us.anthropic.claude-3-5-sonnet-20241022-v2:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3.5-sonnet-v2",
             "bedrock-claude-sonnet-v2",
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0"),
+        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3.5-sonnet",
             "bedrock-claude-sonnet",
@@ -72,7 +76,7 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-opus-20240229-v1:0"),
+        BedrockClaude("anthropic.claude-3-opus-20240229-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3-opus",
             "bedrock-claude-opus",
@@ -81,7 +85,7 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-5-haiku-20241022-v1:0"),
+        BedrockClaude("us.anthropic.claude-3-5-haiku-20241022-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3.5-haiku",
             "bedrock-haiku-v3.5",
@@ -89,14 +93,14 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-haiku-20240307-v1:0"),
+        BedrockClaude("anthropic.claude-3-haiku-20240307-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3-haiku",
             "bedrock-claude-haiku",
             "bedrock-haiku",
             "bh",
         ),
-    )    
+    )
 
 
 class BedrockClaude(llm.Model):
@@ -124,8 +128,9 @@ class BedrockClaude(llm.Model):
                 raise ValueError("max_tokens_to_sample must be in range 1-1,000,000")
             return max_tokens_to_sample
 
-    def __init__(self, model_id):
+    def __init__(self, model_id, supports_attachments=False):
         self.model_id = model_id
+        self.supports_attachments = supports_attachments
 
     @staticmethod
     def load_and_preprocess_image(file):
@@ -198,14 +203,24 @@ class BedrockClaude(llm.Model):
         :return:
         """
         head, tail = os.path.split(file_path)
-        for c in tail:
-            if c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_()[]":
-                tail = tail.replace(c, "_")
-
-        if not tail:
-            return "file"
-
-        return tail[:200]
+        name, ext = os.path.splitext(tail)
+        
+        # Sanitize the name part
+        sanitized_name = ""
+        for c in name:
+            if c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_()[]":
+                sanitized_name += c
+            else:
+                sanitized_name += "_"
+        
+        if not sanitized_name:
+            sanitized_name = "file"
+        
+        # Ensure total length (including extension) is under 200
+        max_name_length = 200 - len(ext)
+        sanitized_name = sanitized_name[:max_name_length]
+        
+        return sanitized_name + ext
 
     def document_path_to_content_block(self, file_path, mime_type):
         """
@@ -237,6 +252,8 @@ class BedrockClaude(llm.Model):
         """
         content = []
         if prompt.options.bedrock_attach:
+            if not self.supports_attachments:
+                raise ValueError(f"Model {self.model_id} does not support attachments")
             # Support multiple files separated by comma.
             for file_path in prompt.options.bedrock_attach.split(','):
                 mime_type, _ = mimetypes.guess_type(file_path)
