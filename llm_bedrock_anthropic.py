@@ -266,13 +266,13 @@ class BedrockClaude(llm.Model):
         }
 
     def validate_attachment(self, data: AttachmentData) -> None:
-        """添付ファイルのバリデーションを行う"""
+        """Validate attachments"""
         if not (data.is_image or data.is_document):
             raise ValueError(f"Unsupported attachment type: {data.mime_type}")
 
     def process_attachment(self, data: AttachmentData) -> dict:
         """
-        添付ファイルを処理してBedrock Converse API用のcontent blockを生成
+        Process attachments and generate content blocks for Bedrock Converse API
         """
         self.validate_attachment(data)
         
