@@ -1,16 +1,36 @@
 # Imports
 
-from typing import Optional, List
+from typing import Optional, List, Union
+from dataclasses import dataclass
 
 import mimetypes
 from base64 import b64encode, b64decode
 from io import BytesIO
 import os
+from pathlib import Path
 
 import boto3
 import llm
 from pydantic import Field, field_validator
 from PIL import Image
+
+@dataclass
+class AttachmentData:
+    mime_type: str
+    content: Union[Path, bytes]  
+    name: Optional[str] = None
+    
+    @property
+    def is_file_path(self) -> bool:
+        return isinstance(self.content, Path)
+    
+    @property
+    def is_image(self) -> bool:
+        return self.mime_type.startswith("image/")
+    
+    @property
+    def is_document(self) -> bool:
+        return self.mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT
 
 
 # Constants
@@ -85,7 +105,7 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-5-haiku-20241022-v1:0", supports_attachments=True),
+        BedrockClaude("us.anthropic.claude-3-5-haiku-20241022-v1:0", supports_attachments=False),
         aliases=(
             "bedrock-claude-v3.5-haiku",
             "bedrock-haiku-v3.5",
@@ -245,181 +265,95 @@ class BedrockClaude(llm.Model):
             }
         }
 
-    def prompt_to_content(self, prompt):
+    def validate_attachment(self, data: AttachmentData) -> None:
+        """添付ファイルのバリデーションを行う"""
+        if not (data.is_image or data.is_document):
+            raise ValueError(f"Unsupported attachment type: {data.mime_type}")
+
+    def process_attachment(self, data: AttachmentData) -> dict:
         """
-        Convert a llm.Prompt object to the content format expected by the Bedrock Converse API.
-        If we encounter the bedrock_attach_files option, detect the file type(s) and use the
-        proper Bedrock Converse content type to attach the file(s) to the prompt.
-
-        :param prompt: A llm Prompt objet.
-        :return: A content object that conforms to the Bedrock Converse API.
+        添付ファイルを処理してBedrock Converse API用のcontent blockを生成
         """
-        content = []
-        if prompt.options.bedrock_attach:
-            if not self.supports_attachments:
-                raise ValueError(f"Model {self.model_id} does not support attachments")
-            # Support multiple files separated by comma.
-            for file_path in prompt.options.bedrock_attach.split(','):
-                mime_type, _ = mimetypes.guess_type(file_path)
-                if not mime_type:
-                    raise ValueError(
-                        f"Unable to guess mime type for file: {file_path}"
-                    )
+        self.validate_attachment(data)
+        
+        if data.is_image:
+            if data.is_file_path:
+                return self.image_path_to_content_block(str(data.content))
+            return self.image_bytes_to_content_block(data.content, data.mime_type)
+            
+        if data.is_document:
+            if data.is_file_path:
+                return self.document_path_to_content_block(str(data.content), data.mime_type)
+            return self.document_bytes_to_content_block(data.content, data.mime_type, data.name)
 
-                file_path = os.path.expanduser(file_path)
-                if mime_type.startswith("image/"):
-                    content.append(self.image_path_to_content_block(file_path))
-                elif mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT:
-                    content.append(self.document_path_to_content_block(file_path, mime_type))
-                else:
-                    raise ValueError(
-                        f"Unsupported file type for file: {file_path}"
-                    )
-
-        # Append the prompt text as a text content block.
-        content.append(
-            {
-                'text': prompt.prompt
-            }
+    def create_attachment_data(self, attachment) -> AttachmentData:
+        """Generate AttachmentData from a modern attachment"""
+        if hasattr(attachment, "path") and attachment.path is not None:
+            return AttachmentData(
+                mime_type=attachment.type,
+                content=Path(attachment.path)
+            )
+        
+        return AttachmentData(
+            mime_type=attachment.type,
+            content=attachment.content_bytes(),
+            name="attachment"
         )
 
-        return content
-
-    def encode_bytes(self, o):
+    def image_bytes_to_content_block(self, image_bytes: bytes, mime_type: str) -> dict:
         """
-        Recursively replace any "bytes" dict attribute in the given object with a base64
-        encoded value as "bytes_b64". This is done to preserve the data during logging activities.
-
-        :param o: A Python object.
-        :return: A copy of the input, but with all "bytes" keys in dicts replaces by base64
-                 encoded values names "bytes".
+        Create a Bedrock Converse content block from image bytes.
+        :param image_bytes: The raw image bytes
+        :param mime_type: The MIME type of the image
+        :return: A Bedrock Converse API content block containing the image
         """
-        if isinstance(o, list):
-            return [self.encode_bytes(i) for i in o]
-        elif isinstance(o, dict):
-            result = {}
-            for key, value in o.items():
-                if key == 'bytes':
-                    result['bytes_b64'] = b64encode(value).decode("utf-8")
-                else:
-                    result[key] = self.encode_bytes(value)
-            return result
-        else:
-            return o
+        with Image.open(BytesIO(image_bytes)) as img:
+            width, height = img.size
+            if width > ANTHROPIC_MAX_IMAGE_LONG_SIZE or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE:
+                # Resize the image while preserving the aspect ratio
+                img.thumbnail((ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE))
+                
+                # Re-export the image
+                with BytesIO() as buffer:
+                    img.save(buffer, format='PNG')
+                    image_bytes = buffer.getvalue()
+                    file_format = 'png'
+            else:
+                # Use original format from mime_type
+                file_format = mime_type.split('/')[-1]
+                if file_format not in BEDROCK_CONVERSE_IMAGE_FORMATS:
+                    # Convert to PNG if format not supported
+                    with BytesIO() as buffer:
+                        img.save(buffer, format='PNG')
+                        image_bytes = buffer.getvalue()
+                        file_format = 'png'
 
-    def decode_bytes(self, o):
-        """
-        Recursively replace any "bytes_b64" dict attribute in the given object with a
-        base64 decoded value as "bytes". This is the reverse of the above, so the resulting
-        data can be sent to Bedrock in its expected form.
-
-        :param o: A Python object.
-        :return: A copy of the input, but with all "bytes_b64" keys in dicts replaced by base64
-                 decoded values names "bytes".
-        """
-        if isinstance(o, list):
-            return [self.decode_bytes(i) for i in o]
-        elif isinstance(o, dict):
-            result = {}
-            for key, value in o.items():
-                if key == 'bytes_b64':
-                    result['bytes'] = b64decode(value)
-                else:
-                    result[key] = self.decode_bytes(value)
-            return result
-        else:
-            return o
-
-    def build_messages(self, prompt_content, conversation) -> List[dict]:
-        messages = []
-        if conversation:
-            for response in conversation.responses:
-                if (
-                    response.response_json and
-                    'bedrock_user_content' in response.response_json
-                ):
-                    user_content = self.decode_bytes(response.response_json['bedrock_user_content'])
-                else:
-                    user_content = [
-                        {
-                            'text': response.prompt.prompt
-                        }
-                    ]
-                assistant_content = [
-                    {
-                        'text': response.text()
-                    }
-                ]
-                messages.extend(
-                    [
-                        {
-                            "role": "user",
-                            "content": user_content
-                        },
-                        {
-                            "role": "assistant",
-                            "content": assistant_content
-                        },
-                    ]
-                )
-
-        messages.append({"role": "user", "content": prompt_content})
-        return messages
-
-    def execute(self, prompt, stream, response, conversation):
-        # Claude 2.0 and Claude Instant did not historically really support system prompts:
-        # https://docs.anthropic.com/claude/docs/constructing-a-prompt#system-prompt-optional
-        #
-        # As of the release of the Messages API, this seems like it has been fixed
-        # https://docs.anthropic.com/claude/docs/system-prompts, but it is not documented that
-        # Claude Instant and 2.0 support it (and the wording implies that it doesn't)
-        # so what we do instead is put what would be the system prompt in the first line of the
-        # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
-        #  `-s`, `-t` and `--save` flags.
-        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
-
-        if prompt.system and self.model_id in [
-            "anthropic.claude-v2",
-            "anthropic.claude-instant-v1",
-        ]:
-            prompt.prompt = prompt.system + "\n" + prompt.prompt
-
-        prompt_content = self.prompt_to_content(prompt)
-        messages = self.build_messages(prompt_content, conversation)
-
-        # Preserve the Bedrock-specific user content dict, so it can be re-used in
-        # future conversations.
-        response.response_json = {
-            'bedrock_user_content': self.encode_bytes(prompt_content)
-        }
-
-        inference_config = {
-            'maxTokens': prompt.options.max_tokens_to_sample
-        }
-
-        # Put together parameters for the Bedrock Converse API.
-        params = {
-            'modelId': bedrock_model_id,
-            'messages': messages,
-            'inferenceConfig': inference_config,
-        }
-
-        if prompt.system:
-            params['system'] = [
-                {
-                    'text': prompt.system
+        return {
+            'image': {
+                'format': file_format,
+                'source': {
+                    'bytes': image_bytes
                 }
-            ]
+            }
+        }
 
-        client = boto3.client('bedrock-runtime')
-        if stream:
-            bedrock_response = client.converse_stream(**params)
-            for event in bedrock_response['stream']:
-                (event_type, event_content), = event.items()
-                if event_type == "contentBlockDelta":
-                    completion = event_content["delta"]["text"]
-                    yield completion
-        else:
-            bedrock_response = client.converse(**params)
-            completion = bedrock_response['output']['message']['content'][-1]['text']
-            yield completion
+    def document_bytes_to_content_block(self, doc_bytes: bytes, mime_type: str, name: Optional[str] = None) -> dict:
+        """
+        Create a Bedrock Converse content block from document bytes.
+        :param doc_bytes: The raw document bytes
+        :param mime_type: The MIME type of the document
+        :param name: Optional name for the document
+        :return: A Bedrock Converse API content block containing the document
+        """
+        if name is None:
+            name = "document"
+            
+        return {
+            'document': {
+                'format': MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
+                'name': self.sanitize_file_name(name),
+                'source': {
+                    'bytes': doc_bytes
+                }
+            }
+        }

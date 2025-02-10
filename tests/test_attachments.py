@@ -1,173 +1,175 @@
 import os
 import pytest
+import mimetypes
 from PIL import Image
 from io import BytesIO
+from pathlib import Path
 
-from llm_bedrock_anthropic import BedrockClaude, ANTHROPIC_MAX_IMAGE_LONG_SIZE
+from llm_bedrock_anthropic import (
+    BedrockClaude, 
+    ANTHROPIC_MAX_IMAGE_LONG_SIZE, 
+    AttachmentData, 
+    MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT
+)
 
 # Test fixtures paths
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), 'fixtures')
 IMAGES_DIR = os.path.join(FIXTURES_DIR, 'images')
 DOCS_DIR = os.path.join(FIXTURES_DIR, 'documents')
 
+class TestBedrockClaude(BedrockClaude):
+    def execute(self, prompt, stream=False, response=None, **kwargs):
+        # Mock implementation for testing
+        return "Test response"
+        
+    def create_attachment_data_from_path(self, path):
+        """Create AttachmentData from a file path"""
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            raise ValueError(f"Could not determine MIME type for {path}")
+        return AttachmentData(
+            mime_type=mime_type,
+            content=Path(path)
+        )
+
 @pytest.fixture
 def model():
-    return BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0", supports_attachments=True)
+    return TestBedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0", supports_attachments=True)
 
 @pytest.fixture
 def model_no_attachments():
-    return BedrockClaude("anthropic.claude-v2", supports_attachments=False)
+    return TestBedrockClaude("anthropic.claude-v2", supports_attachments=False)
 
-def test_attachment_support():
-    """Test attachment support flag"""
-    model_with = BedrockClaude("test-model", supports_attachments=True)
-    model_without = BedrockClaude("test-model", supports_attachments=False)
-    assert model_with.supports_attachments is True
-    assert model_without.supports_attachments is False
-
-def test_prompt_to_content_unsupported_model(model_no_attachments):
-    """Test attempting to use attachments with unsupported model"""
-    class MockPrompt:
-        def __init__(self):
-            self.prompt = "Describe this image"
-            self.options = type('Options', (), {'bedrock_attach': 'test.png'})()
+def test_attachment_data_properties():
+    """Test properties of AttachmentData"""
+    # Test with file path
+    image_path = Path(os.path.join(IMAGES_DIR, 'test.png'))
+    image_data = AttachmentData(
+        mime_type='image/png', 
+        content=image_path
+    )
     
-    with pytest.raises(ValueError, match="Model .* does not support attachments"):
-        model_no_attachments.prompt_to_content(MockPrompt())
+    assert image_data.is_file_path is True
+    assert image_data.is_image is True
+    assert image_data.is_document is False
+    
+    # Test with bytes
+    doc_bytes = b'test document content'
+    doc_data = AttachmentData(
+        mime_type='text/plain', 
+        content=doc_bytes,
+        name='test.txt'
+    )
+    
+    assert doc_data.is_file_path is False
+    assert doc_data.is_image is False
+    assert doc_data.is_document is True
+    assert doc_data.name == 'test.txt'
 
-def test_load_and_preprocess_image_png(model):
-    """Test loading and preprocessing a PNG image"""
+def test_create_attachment_data(model):
+    """Test creating AttachmentData from different sources"""
+    class MockAttachment:
+        def __init__(self, path=None, content=None, mime_type='image/png'):
+            self.path = path
+            self._content = content
+            self.type = mime_type
+        
+        def content_bytes(self):
+            return self._content
+
+    # Test with file path
     image_path = os.path.join(IMAGES_DIR, 'test.png')
-    img_bytes, img_format = model.load_and_preprocess_image(image_path)
+    file_attachment = MockAttachment(path=image_path)
+    file_data = model.create_attachment_data(file_attachment)
     
-    # Verify the format
-    assert img_format == 'png'
-    
-    # Verify the image can be loaded
-    img = Image.open(BytesIO(img_bytes))
-    assert img.format.lower() == 'png'
-    assert img.size == (100, 100)
+    assert isinstance(file_data.content, Path)
+    assert file_data.mime_type == 'image/png'
+    assert file_data.name is None
 
-def test_load_and_preprocess_image_jpeg(model):
-    """Test loading and preprocessing a JPEG image"""
-    image_path = os.path.join(IMAGES_DIR, 'test.jpg')
-    img_bytes, img_format = model.load_and_preprocess_image(image_path)
+    # Test with bytes
+    byte_content = b'test image content'
+    byte_attachment = MockAttachment(content=byte_content)
+    byte_data = model.create_attachment_data(byte_attachment)
     
-    # Verify the format
-    assert img_format == 'jpeg'
-    
-    # Verify the image can be loaded
-    img = Image.open(BytesIO(img_bytes))
-    assert img.format.lower() == 'jpeg'
-    assert img.size == (100, 100)
+    assert byte_data.content == byte_content
+    assert byte_data.mime_type == 'image/png'
+    assert byte_data.name == 'attachment'
 
-def test_load_and_preprocess_large_image(model):
-    """Test loading and preprocessing an oversized image"""
-    image_path = os.path.join(IMAGES_DIR, 'large_test.png')
-    img_bytes, img_format = model.load_and_preprocess_image(image_path)
-    
-    # Verify the format
-    assert img_format == 'png'
-    
-    # Verify the image was resized
-    img = Image.open(BytesIO(img_bytes))
-    width, height = img.size
-    assert max(width, height) <= ANTHROPIC_MAX_IMAGE_LONG_SIZE
-
-def test_image_path_to_content_block(model):
-    """Test converting an image to a content block"""
+def test_create_attachment_data_from_path(model):
+    """Test creating AttachmentData from file paths"""
+    # Test image path
     image_path = os.path.join(IMAGES_DIR, 'test.png')
-    content_block = model.image_path_to_content_block(image_path)
+    image_data = model.create_attachment_data_from_path(image_path)
     
-    assert 'image' in content_block
-    assert 'format' in content_block['image']
-    assert content_block['image']['format'] == 'png'
-    assert 'source' in content_block['image']
-    assert 'bytes' in content_block['image']['source']
+    assert isinstance(image_data.content, Path)
+    assert image_data.mime_type == 'image/png'
 
-def test_sanitize_file_name(model):
-    """Test file name sanitization"""
-    test_cases = [
-        ('test.pdf', 'test.pdf'),
-        ('test file.pdf', 'test_file.pdf'),
-        ('test@#$%^&*.pdf', 'test_______.pdf'),
-        ('a' * 250 + '.pdf', ('a' * 196) + '.pdf'),  # 200 char limit
-    ]
-    
-    for input_name, expected in test_cases:
-        assert model.sanitize_file_name(input_name) == expected
-
-def test_document_path_to_content_block(model):
-    """Test converting a document to a content block"""
+    # Test document path
     doc_path = os.path.join(DOCS_DIR, 'test.txt')
-    content_block = model.document_path_to_content_block(doc_path, 'text/plain')
+    doc_data = model.create_attachment_data_from_path(doc_path)
     
-    assert 'document' in content_block
-    assert 'format' in content_block['document']
-    assert content_block['document']['format'] == 'txt'
-    assert 'name' in content_block['document']
-    assert content_block['document']['name'] == 'test.txt'
-    assert 'source' in content_block['document']
-    assert 'bytes' in content_block['document']['source']
+    assert isinstance(doc_data.content, Path)
+    assert doc_data.mime_type == 'text/plain'
 
-def test_prompt_to_content_single_image(model):
-    """Test creating content with a single image attachment"""
-    class MockPrompt:
-        def __init__(self):
-            self.prompt = "Describe this image"
-            self.options = type('Options', (), {'bedrock_attach': os.path.join(IMAGES_DIR, 'test.png')})()
-    
-    content = model.prompt_to_content(MockPrompt())
-    assert len(content) == 2  # Image block + text block
-    assert 'image' in content[0]
-    assert 'text' in content[1]
-    assert content[1]['text'] == "Describe this image"
+def test_validate_attachment(model):
+    """Test attachment validation"""
+    # Valid image attachment
+    image_data = AttachmentData(
+        mime_type='image/png', 
+        content=Path(os.path.join(IMAGES_DIR, 'test.png'))
+    )
+    model.validate_attachment(image_data)  # Should not raise exception
 
-def test_prompt_to_content_multiple_attachments(model):
-    """Test creating content with multiple attachments"""
-    class MockPrompt:
-        def __init__(self):
-            self.prompt = "Describe these files"
-            self.options = type('Options', (), {
-                'bedrock_attach': f"{os.path.join(IMAGES_DIR, 'test.png')},{os.path.join(DOCS_DIR, 'test.txt')}"
-            })()
-    
-    content = model.prompt_to_content(MockPrompt())
-    assert len(content) == 3  # Image block + document block + text block
-    assert 'image' in content[0]
-    assert 'document' in content[1]
-    assert 'text' in content[2]
-    assert content[2]['text'] == "Describe these files"
+    # Valid document attachment
+    doc_data = AttachmentData(
+        mime_type='text/plain', 
+        content=b'test document content'
+    )
+    model.validate_attachment(doc_data)  # Should not raise exception
 
-def test_prompt_to_content_unsupported_file(model):
-    """Test handling of unsupported file types"""
-    class MockPrompt:
-        def __init__(self):
-            self.prompt = "Process this file"
-            self.options = type('Options', (), {'bedrock_attach': 'test.unsupported'})()
-    
-    with pytest.raises(ValueError, match="Unable to guess mime type for file"):
-        model.prompt_to_content(MockPrompt())
+    # Invalid attachment type
+    with pytest.raises(ValueError, match="Unsupported attachment type"):
+        invalid_data = AttachmentData(
+            mime_type='application/x-unknown', 
+            content=b'invalid content'
+        )
+        model.validate_attachment(invalid_data)
 
-def test_encode_decode_bytes():
-    """Test encoding and decoding of binary data"""
-    model = BedrockClaude("test-model")
-    test_data = {
-        'image': {
-            'format': 'png',
-            'source': {
-                'bytes': b'test binary data'
-            }
-        }
-    }
+def test_process_attachment(model):
+    """Test processing different types of attachments"""
+    # Image file path
+    image_path = os.path.join(IMAGES_DIR, 'test.png')
+    image_data = AttachmentData(mime_type='image/png', content=Path(image_path))
+    image_block = model.process_attachment(image_data)
     
-    # Test encoding
-    encoded = model.encode_bytes(test_data)
-    assert 'bytes' not in encoded['image']['source']
-    assert 'bytes_b64' in encoded['image']['source']
+    assert 'image' in image_block
+    assert image_block['image']['format'] == 'png'
+    assert 'bytes' in image_block['image']['source']
+
+    # Image bytes - using a small valid PNG image
+    image_bytes = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00\x00\x02\x00\x01\xe5\x27\xde\xfc\x00\x00\x00\x00IEND\xaeB`\x82'
+    image_bytes_data = AttachmentData(mime_type='image/png', content=image_bytes)
+    image_bytes_block = model.process_attachment(image_bytes_data)
     
-    # Test decoding
-    decoded = model.decode_bytes(encoded)
-    assert 'bytes_b64' not in decoded['image']['source']
-    assert 'bytes' in decoded['image']['source']
-    assert decoded['image']['source']['bytes'] == b'test binary data'
+    assert 'image' in image_bytes_block
+    assert image_bytes_block['image']['format'] == 'png'
+    assert 'bytes' in image_bytes_block['image']['source']
+
+    # Document file path
+    doc_path = os.path.join(DOCS_DIR, 'test.txt')
+    doc_data = AttachmentData(mime_type='text/plain', content=Path(doc_path))
+    doc_block = model.process_attachment(doc_data)
+    
+    assert 'document' in doc_block
+    assert doc_block['document']['format'] == 'txt'
+    assert 'bytes' in doc_block['document']['source']
+
+    # Document bytes
+    doc_bytes = b'test document content'
+    doc_bytes_data = AttachmentData(mime_type='text/plain', content=doc_bytes, name='test.txt')
+    doc_bytes_block = model.process_attachment(doc_bytes_data)
+    
+    assert 'document' in doc_bytes_block
+    assert doc_block['document']['format'] == 'txt'
+    assert 'bytes' in doc_block['document']['source']
+    assert doc_bytes_block['document']['name'] == 'test.txt'
