@@ -96,7 +96,15 @@ def register_models(register):
             "bedrock-haiku",
             "bh",
         ),
-    )    
+    )
+    register(
+        BedrockClaude("us.anthropic.claude-3-7-sonnet-20250219-v1:0"),
+        aliases=(
+            "bedrock-claude-v3.7-sonnet",
+            "bedrock-claude-sonnet-v3.7",
+            "bc-v3.7",
+        ),
+    )
 
 
 class BedrockClaude(llm.Model):
