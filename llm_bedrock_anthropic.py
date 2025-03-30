@@ -550,6 +550,9 @@ class BedrockClaude(llm.Model):
         self.set_usage(response)
     
     def set_usage(self, response: llm.Response):
+        if not hasattr(response, 'set_usage'):
+            # Older versions of llm do not have this method
+            return
         res_json = response.response_json
 
         if 'usage' in res_json:
