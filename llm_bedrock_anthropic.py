@@ -533,12 +533,33 @@ class BedrockClaude(llm.Model):
         client = boto3.client('bedrock-runtime')
         if stream:
             bedrock_response = client.converse_stream(**params)
+            response.response_json |= bedrock_response
+            events = []
             for event in bedrock_response['stream']:
                 (event_type, event_content), = event.items()
                 if event_type == "contentBlockDelta":
                     completion = event_content["delta"]["text"]
                     yield completion
+                events.append(event)
+            response.response_json["stream"] = events
         else:
             bedrock_response = client.converse(**params)
             completion = bedrock_response['output']['message']['content'][-1]['text']
+            response.response_json |= bedrock_response
             yield completion
+        self.set_usage(response)
+    
+    def set_usage(self, response: llm.Response):
+        res_json = response.response_json
+
+        if 'usage' in res_json:
+            response.set_usage(input=res_json['usage']['inputTokens'], output=res_json['usage']['outputTokens'])
+        elif 'stream' in res_json:
+            events = res_json['stream']
+            for event in events:
+                (event_type, event_content), = event.items()
+                if event_type == "metadata":
+                    input_tokens = event_content["usage"]["inputTokens"]
+                    output_tokens = event_content["usage"]["outputTokens"]
+                    response.set_usage(input=input_tokens, output=output_tokens)
+                    break
