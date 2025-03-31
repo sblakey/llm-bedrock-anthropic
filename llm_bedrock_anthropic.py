@@ -122,7 +122,7 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-7-sonnet-20250219-v1:0"),
+        BedrockClaude("us.anthropic.claude-3-7-sonnet-20250219-v1:0", supports_attachments=True),
         aliases=(
             "bedrock-claude-v3.7-sonnet",
             "bedrock-claude-sonnet-v3.7",
@@ -376,6 +376,8 @@ class BedrockClaude(llm.Model):
         :return: A content object that conforms to the Bedrock Converse API.
         """
         content = []
+
+        # Legacy attachments with -o bedrock_attach
         if prompt.options.bedrock_attach:
             # Support multiple files separated by comma.
             for file_path in prompt.options.bedrock_attach.split(','):
@@ -394,6 +396,13 @@ class BedrockClaude(llm.Model):
                     raise ValueError(
                         f"Unsupported file type for file: {file_path}"
                     )
+
+        # Modern attachments with -a or --attachment
+        if hasattr(prompt, 'attachments'):
+            data = [self.create_attachment_data(a) for a in prompt.attachments]
+            content_blocks = [self.process_attachment(d) for d in data]
+            content.extend(content_blocks)
+            
 
         # Append the prompt text as a text content block.
         content.append(

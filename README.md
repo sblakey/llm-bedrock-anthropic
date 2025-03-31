@@ -76,3 +76,6 @@ llm -m bedrock-claude-haiku -o bedrock_attach cat.jpg,mouse.jpg "What do these a
 ```bash
 llm -m bedrock-claude-haiku -o bedrock_attach Model_Card_Claude_3_Addendum.pdf "Summarize this document."
 ```
+
+The newer command line parameters `-a`, `--attachment`, `--at`, and `--attachment-type` are also supported.
+The `bedrock_atach` option is retained for backwards compatibility, and will be removed in the next major version.
