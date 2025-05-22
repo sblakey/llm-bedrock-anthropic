@@ -129,6 +129,22 @@ def register_models(register):
             "bc-v3.7",
         ),
     )
+    register(
+        BedrockClaude("anthropic.claude-sonnet-4-20250514-v1:0", supports_attachments=True),
+        aliases=(
+            "bedrock-claude-v4-sonnet",
+            "bedrock-claude-sonnet-v4",
+            "bc-v4",
+        ),
+    )
+    register(
+        BedrockClaude("anthropic.claude-opus-4-20250514-v1:0", supports_attachments=True),
+        aliases=(
+            "bedrock-claude-v4-opus",
+            "bedrock-claude-opus-v4",
+            "bo-v4",
+        ),
+    )
 
 
 class BedrockClaude(llm.Model):
