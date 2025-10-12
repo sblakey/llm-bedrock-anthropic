@@ -1,33 +1,33 @@
 # Imports
 
-from typing import Optional, List, Union
-from dataclasses import dataclass
-
 import mimetypes
-from base64 import b64encode, b64decode
-from io import BytesIO
 import os
+from base64 import b64decode, b64encode
+from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
+from typing import List, Optional, Union
 
 import boto3
 import llm
-from pydantic import Field, field_validator
 from PIL import Image
+from pydantic import Field, field_validator
+
 
 @dataclass
 class AttachmentData:
     mime_type: str
-    content: Union[Path, bytes]  
+    content: Union[Path, bytes]
     name: Optional[str] = None
-    
+
     @property
     def is_file_path(self) -> bool:
         return isinstance(self.content, Path)
-    
+
     @property
     def is_image(self) -> bool:
         return self.mime_type.startswith("image/")
-    
+
     @property
     def is_document(self) -> bool:
         return self.mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT
@@ -55,6 +55,7 @@ ANTHROPIC_MAX_IMAGE_LONG_SIZE = 1568
 
 # Much of this code is derived from https://github.com/tomviner/llm-claude
 
+
 @llm.hookimpl
 def register_models(register):
     # Claude 2 and earlier models (no attachment support)
@@ -64,29 +65,36 @@ def register_models(register):
     )
     register(
         BedrockClaude("anthropic.claude-v2", supports_attachments=False),
-        aliases=("bedrock-claude-v2-0",)
+        aliases=("bedrock-claude-v2-0",),
     )
     register(
         BedrockClaude("anthropic.claude-v2:1", supports_attachments=False),
-        aliases=("bedrock-claude-v2.1", "bedrock-claude-v2",),
-    )
-    
-    # Claude 3 models (with attachment support)
-    register(
-        BedrockClaude("anthropic.claude-3-sonnet-20240229-v1:0", supports_attachments=True),
         aliases=(
-            "bedrock-claude-v3-sonnet",
+            "bedrock-claude-v2.1",
+            "bedrock-claude-v2",
         ),
     )
+
+    # Claude 3 models (with attachment support)
     register(
-        BedrockClaude("us.anthropic.claude-3-5-sonnet-20241022-v2:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-3-sonnet-20240229-v1:0", supports_attachments=True
+        ),
+        aliases=("bedrock-claude-v3-sonnet",),
+    )
+    register(
+        BedrockClaude(
+            "us.anthropic.claude-3-5-sonnet-20241022-v2:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v3.5-sonnet-v2",
             "bedrock-claude-sonnet-v2",
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-5-sonnet-20240620-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-3-5-sonnet-20240620-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v3.5-sonnet",
             "bedrock-claude-sonnet",
@@ -96,7 +104,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-opus-20240229-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-3-opus-20240229-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v3-opus",
             "bedrock-claude-opus",
@@ -105,7 +115,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-5-haiku-20241022-v1:0", supports_attachments=False),
+        BedrockClaude(
+            "us.anthropic.claude-3-5-haiku-20241022-v1:0", supports_attachments=False
+        ),
         aliases=(
             "bedrock-claude-v3.5-haiku",
             "bedrock-haiku-v3.5",
@@ -113,7 +125,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-3-haiku-20240307-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-3-haiku-20240307-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v3-haiku",
             "bedrock-claude-haiku",
@@ -122,7 +136,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("us.anthropic.claude-3-7-sonnet-20250219-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "us.anthropic.claude-3-7-sonnet-20250219-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v3.7-sonnet",
             "bedrock-claude-sonnet-v3.7",
@@ -130,7 +146,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-sonnet-4-20250514-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-sonnet-4-20250514-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v4-sonnet",
             "bedrock-claude-sonnet-v4",
@@ -138,7 +156,9 @@ def register_models(register):
         ),
     )
     register(
-        BedrockClaude("anthropic.claude-opus-4-20250514-v1:0", supports_attachments=True),
+        BedrockClaude(
+            "anthropic.claude-opus-4-20250514-v1:0", supports_attachments=True
+        ),
         aliases=(
             "bedrock-claude-v4-opus",
             "bedrock-claude-opus-v4",
@@ -176,10 +196,14 @@ class BedrockClaude(llm.Model):
         self.model_id = model_id
         self.supports_attachments = supports_attachments
         if supports_attachments:
-            image_mime_types = {f"image/{fmt}" for fmt in BEDROCK_CONVERSE_IMAGE_FORMATS}
-            document_mime_types = set(MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT.keys())
+            image_mime_types = {
+                f"image/{fmt}" for fmt in BEDROCK_CONVERSE_IMAGE_FORMATS
+            }
+            document_mime_types = set(
+                MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT.keys()
+            )
             self.attachment_types = image_mime_types.union(document_mime_types)
-    
+
     @staticmethod
     def load_and_preprocess_image(file):
         """
@@ -202,21 +226,26 @@ class BedrockClaude(llm.Model):
         with Image.open(BytesIO(img_bytes)) as img:
             img_format = img.format
             width, height = img.size
-            if width > ANTHROPIC_MAX_IMAGE_LONG_SIZE or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE:
+            if (
+                width > ANTHROPIC_MAX_IMAGE_LONG_SIZE
+                or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE
+            ):
                 # Resize the image while preserving the aspect ratio
-                img.thumbnail((ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE))
+                img.thumbnail(
+                    (ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE)
+                )
 
             # Change format if necessary
             if (
-                img_format.lower() in BEDROCK_CONVERSE_IMAGE_FORMATS and
-                img.size == (width, height)  # Original size, no resize needed
+                img_format.lower() in BEDROCK_CONVERSE_IMAGE_FORMATS
+                and img.size == (width, height)  # Original size, no resize needed
             ):
                 return img_bytes, img_format.lower()
 
             # Re-export the image with the appropriate format
             with BytesIO() as buffer:
-                img.save(buffer, format='PNG')
-                return buffer.getvalue(), 'png'
+                img.save(buffer, format="PNG")
+                return buffer.getvalue(), "png"
 
     def image_path_to_content_block(self, path):
         """
@@ -226,14 +255,7 @@ class BedrockClaude(llm.Model):
         """
         source_bytes, file_format = self.load_and_preprocess_image(path)
 
-        return {
-            'image': {
-                'format': file_format,
-                'source': {
-                    'bytes': source_bytes
-                }
-            }
-        }
+        return {"image": {"format": file_format, "source": {"bytes": source_bytes}}}
 
     @staticmethod
     def sanitize_file_name(file_path):
@@ -252,22 +274,25 @@ class BedrockClaude(llm.Model):
         """
         head, tail = os.path.split(file_path)
         name, ext = os.path.splitext(tail)
-        
+
         # Sanitize the name part
         sanitized_name = ""
         for c in name:
-            if c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_()[]":
+            if (
+                c
+                in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_()[]"
+            ):
                 sanitized_name += c
             else:
                 sanitized_name += "_"
-        
+
         if not sanitized_name:
             sanitized_name = "file"
-        
+
         # Ensure total length (including extension) is under 200
         max_name_length = 200 - len(ext)
         sanitized_name = sanitized_name[:max_name_length]
-        
+
         return sanitized_name + ext
 
     def document_path_to_content_block(self, file_path, mime_type):
@@ -280,12 +305,10 @@ class BedrockClaude(llm.Model):
         with open(file_path, "rb") as fp:
             source_bytes = fp.read()
         return {
-            'document': {
-                'format': MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
-                'name': self.sanitize_file_name(file_path),
-                'source': {
-                    'bytes': source_bytes
-                }
+            "document": {
+                "format": MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
+                "name": self.sanitize_file_name(file_path),
+                "source": {"bytes": source_bytes},
             }
         }
 
@@ -299,29 +322,32 @@ class BedrockClaude(llm.Model):
         Process attachments and generate content blocks for Bedrock Converse API
         """
         self.validate_attachment(data)
-        
+
         if data.is_image:
             if data.is_file_path:
                 return self.image_path_to_content_block(str(data.content))
             return self.image_bytes_to_content_block(data.content, data.mime_type)
-            
+
         if data.is_document:
             if data.is_file_path:
-                return self.document_path_to_content_block(str(data.content), data.mime_type)
-            return self.document_bytes_to_content_block(data.content, data.mime_type, data.name)
+                return self.document_path_to_content_block(
+                    str(data.content), data.mime_type
+                )
+            return self.document_bytes_to_content_block(
+                data.content, data.mime_type, data.name
+            )
 
     def create_attachment_data(self, attachment) -> AttachmentData:
         """Generate AttachmentData from a modern attachment"""
         if hasattr(attachment, "path") and attachment.path is not None:
             return AttachmentData(
-                mime_type=attachment.type,
-                content=Path(attachment.path)
+                mime_type=attachment.type, content=Path(attachment.path)
             )
-        
+
         return AttachmentData(
             mime_type=attachment.type,
             content=attachment.content_bytes(),
-            name="attachment"
+            name="attachment",
         )
 
     def image_bytes_to_content_block(self, image_bytes: bytes, mime_type: str) -> dict:
@@ -333,35 +359,35 @@ class BedrockClaude(llm.Model):
         """
         with Image.open(BytesIO(image_bytes)) as img:
             width, height = img.size
-            if width > ANTHROPIC_MAX_IMAGE_LONG_SIZE or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE:
+            if (
+                width > ANTHROPIC_MAX_IMAGE_LONG_SIZE
+                or height > ANTHROPIC_MAX_IMAGE_LONG_SIZE
+            ):
                 # Resize the image while preserving the aspect ratio
-                img.thumbnail((ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE))
-                
+                img.thumbnail(
+                    (ANTHROPIC_MAX_IMAGE_LONG_SIZE, ANTHROPIC_MAX_IMAGE_LONG_SIZE)
+                )
+
                 # Re-export the image
                 with BytesIO() as buffer:
-                    img.save(buffer, format='PNG')
+                    img.save(buffer, format="PNG")
                     image_bytes = buffer.getvalue()
-                    file_format = 'png'
+                    file_format = "png"
             else:
                 # Use original format from mime_type
-                file_format = mime_type.split('/')[-1]
+                file_format = mime_type.split("/")[-1]
                 if file_format not in BEDROCK_CONVERSE_IMAGE_FORMATS:
                     # Convert to PNG if format not supported
                     with BytesIO() as buffer:
-                        img.save(buffer, format='PNG')
+                        img.save(buffer, format="PNG")
                         image_bytes = buffer.getvalue()
-                        file_format = 'png'
+                        file_format = "png"
 
-        return {
-            'image': {
-                'format': file_format,
-                'source': {
-                    'bytes': image_bytes
-                }
-            }
-        }
+        return {"image": {"format": file_format, "source": {"bytes": image_bytes}}}
 
-    def document_bytes_to_content_block(self, doc_bytes: bytes, mime_type: str, name: Optional[str] = None) -> dict:
+    def document_bytes_to_content_block(
+        self, doc_bytes: bytes, mime_type: str, name: Optional[str] = None
+    ) -> dict:
         """
         Create a Bedrock Converse content block from document bytes.
         :param doc_bytes: The raw document bytes
@@ -371,14 +397,12 @@ class BedrockClaude(llm.Model):
         """
         if name is None:
             name = "document"
-            
+
         return {
-            'document': {
-                'format': MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
-                'name': self.sanitize_file_name(name),
-                'source': {
-                    'bytes': doc_bytes
-                }
+            "document": {
+                "format": MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT[mime_type],
+                "name": self.sanitize_file_name(name),
+                "source": {"bytes": doc_bytes},
             }
         }
 
@@ -396,36 +420,29 @@ class BedrockClaude(llm.Model):
         # Legacy attachments with -o bedrock_attach
         if prompt.options.bedrock_attach:
             # Support multiple files separated by comma.
-            for file_path in prompt.options.bedrock_attach.split(','):
+            for file_path in prompt.options.bedrock_attach.split(","):
                 mime_type, _ = mimetypes.guess_type(file_path)
                 if not mime_type:
-                    raise ValueError(
-                        f"Unable to guess mime type for file: {file_path}"
-                    )
+                    raise ValueError(f"Unable to guess mime type for file: {file_path}")
 
                 file_path = os.path.expanduser(file_path)
                 if mime_type.startswith("image/"):
                     content.append(self.image_path_to_content_block(file_path))
                 elif mime_type in MIME_TYPE_TO_BEDROCK_CONVERSE_DOCUMENT_FORMAT:
-                    content.append(self.document_path_to_content_block(file_path, mime_type))
-                else:
-                    raise ValueError(
-                        f"Unsupported file type for file: {file_path}"
+                    content.append(
+                        self.document_path_to_content_block(file_path, mime_type)
                     )
+                else:
+                    raise ValueError(f"Unsupported file type for file: {file_path}")
 
         # Modern attachments with -a or --attachment
-        if hasattr(prompt, 'attachments'):
+        if hasattr(prompt, "attachments"):
             data = [self.create_attachment_data(a) for a in prompt.attachments]
             content_blocks = [self.process_attachment(d) for d in data]
             content.extend(content_blocks)
-            
 
         # Append the prompt text as a text content block.
-        content.append(
-            {
-                'text': prompt.prompt
-            }
-        )
+        content.append({"text": prompt.prompt})
 
         return content
 
@@ -443,8 +460,8 @@ class BedrockClaude(llm.Model):
         elif isinstance(o, dict):
             result = {}
             for key, value in o.items():
-                if key == 'bytes':
-                    result['bytes_b64'] = b64encode(value).decode("utf-8")
+                if key == "bytes":
+                    result["bytes_b64"] = b64encode(value).decode("utf-8")
                 else:
                     result[key] = self.encode_bytes(value)
             return result
@@ -466,8 +483,8 @@ class BedrockClaude(llm.Model):
         elif isinstance(o, dict):
             result = {}
             for key, value in o.items():
-                if key == 'bytes_b64':
-                    result['bytes'] = b64decode(value)
+                if key == "bytes_b64":
+                    result["bytes"] = b64decode(value)
                 else:
                     result[key] = self.decode_bytes(value)
             return result
@@ -479,31 +496,19 @@ class BedrockClaude(llm.Model):
         if conversation:
             for response in conversation.responses:
                 if (
-                    response.response_json and
-                    'bedrock_user_content' in response.response_json
+                    response.response_json
+                    and "bedrock_user_content" in response.response_json
                 ):
-                    user_content = self.decode_bytes(response.response_json['bedrock_user_content'])
+                    user_content = self.decode_bytes(
+                        response.response_json["bedrock_user_content"]
+                    )
                 else:
-                    user_content = [
-                        {
-                            'text': response.prompt.prompt
-                        }
-                    ]
-                assistant_content = [
-                    {
-                        'text': response.text()
-                    }
-                ]
+                    user_content = [{"text": response.prompt.prompt}]
+                assistant_content = [{"text": response.text()}]
                 messages.extend(
                     [
-                        {
-                            "role": "user",
-                            "content": user_content
-                        },
-                        {
-                            "role": "assistant",
-                            "content": assistant_content
-                        },
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content},
                     ]
                 )
 
@@ -534,34 +539,28 @@ class BedrockClaude(llm.Model):
         # Preserve the Bedrock-specific user content dict, so it can be re-used in
         # future conversations.
         response.response_json = {
-            'bedrock_user_content': self.encode_bytes(prompt_content)
+            "bedrock_user_content": self.encode_bytes(prompt_content)
         }
 
-        inference_config = {
-            'maxTokens': prompt.options.max_tokens_to_sample
-        }
+        inference_config = {"maxTokens": prompt.options.max_tokens_to_sample}
 
         # Put together parameters for the Bedrock Converse API.
         params = {
-            'modelId': bedrock_model_id,
-            'messages': messages,
-            'inferenceConfig': inference_config,
+            "modelId": bedrock_model_id,
+            "messages": messages,
+            "inferenceConfig": inference_config,
         }
 
         if prompt.system:
-            params['system'] = [
-                {
-                    'text': prompt.system
-                }
-            ]
+            params["system"] = [{"text": prompt.system}]
 
-        client = boto3.client('bedrock-runtime')
+        client = boto3.client("bedrock-runtime")
         if stream:
             bedrock_response = client.converse_stream(**params)
             response.response_json |= bedrock_response
             events = []
-            for event in bedrock_response['stream']:
-                (event_type, event_content), = event.items()
+            for event in bedrock_response["stream"]:
+                ((event_type, event_content),) = event.items()
                 if event_type == "contentBlockDelta":
                     completion = event_content["delta"]["text"]
                     yield completion
@@ -569,23 +568,26 @@ class BedrockClaude(llm.Model):
             response.response_json["stream"] = events
         else:
             bedrock_response = client.converse(**params)
-            completion = bedrock_response['output']['message']['content'][-1]['text']
+            completion = bedrock_response["output"]["message"]["content"][-1]["text"]
             response.response_json |= bedrock_response
             yield completion
         self.set_usage(response)
-    
+
     def set_usage(self, response: llm.Response):
-        if not hasattr(response, 'set_usage'):
+        if not hasattr(response, "set_usage"):
             # Older versions of llm do not have this method
             return
         res_json = response.response_json
 
-        if 'usage' in res_json:
-            response.set_usage(input=res_json['usage']['inputTokens'], output=res_json['usage']['outputTokens'])
-        elif 'stream' in res_json:
-            events = res_json['stream']
+        if "usage" in res_json:
+            response.set_usage(
+                input=res_json["usage"]["inputTokens"],
+                output=res_json["usage"]["outputTokens"],
+            )
+        elif "stream" in res_json:
+            events = res_json["stream"]
             for event in events:
-                (event_type, event_content), = event.items()
+                ((event_type, event_content),) = event.items()
                 if event_type == "metadata":
                     input_tokens = event_content["usage"]["inputTokens"]
                     output_tokens = event_content["usage"]["outputTokens"]
