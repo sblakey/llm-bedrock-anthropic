@@ -165,6 +165,68 @@ def register_models(register):
             "bo-v4",
         ),
     )
+    register(
+        BedrockClaude(
+            "anthropic.claude-opus-4-1-20250805-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.1-opus",
+            "bedrock-claude-opus-v4.1",
+            "bo-v4.1",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "anthropic.claude-sonnet-4-5-20250929-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-sonnet",
+            "bedrock-claude-sonnet-v4.5",
+            "bc-v4.5",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "us.anthropic.claude-opus-4-1-20250805-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.1-opus-us",
+            "bedrock-claude-opus-v4.1-us",
+            "bo-v4.1-us",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-sonnet-us",
+            "bedrock-claude-sonnet-v4.5-us",
+            "bc-v4.5-us",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "global.anthropic.claude-sonnet-4-20250514-v1:0",
+            supports_attachments=True,
+        ),
+        aliases=(
+            "bedrock-claude-v4-sonnet-global",
+            "bedrock-claude-sonnet-v4-global",
+            "bc-v4-global",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            supports_attachments=True,
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-sonnet-global",
+            "bedrock-claude-sonnet-v4.5-global",
+            "bc-v4.5-global",
+        ),
+    )
 
 
 class BedrockClaude(llm.Model):
