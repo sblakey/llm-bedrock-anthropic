@@ -137,6 +137,16 @@ def register_models(register):
     )
     register(
         BedrockClaude(
+            "anthropic.claude-haiku-4-5-20251001-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-haiku",
+            "bedrock-claude-haiku-v4.5",
+            "bh-v4.5",
+        ),
+    )
+    register(
+        BedrockClaude(
             "us.anthropic.claude-3-7-sonnet-20250219-v1:0", supports_attachments=True
         ),
         aliases=(
@@ -207,6 +217,16 @@ def register_models(register):
     )
     register(
         BedrockClaude(
+            "us.anthropic.claude-haiku-4-5-20251001-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-haiku-us",
+            "bedrock-claude-haiku-v4.5-us",
+            "bh-v4.5-us",
+        ),
+    )
+    register(
+        BedrockClaude(
             "global.anthropic.claude-sonnet-4-20250514-v1:0",
             supports_attachments=True,
         ),
@@ -225,6 +245,17 @@ def register_models(register):
             "bedrock-claude-v4.5-sonnet-global",
             "bedrock-claude-sonnet-v4.5-global",
             "bc-v4.5-global",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+            supports_attachments=True,
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-haiku-global",
+            "bedrock-claude-haiku-v4.5-global",
+            "bh-v4.5-global",
         ),
     )
 
