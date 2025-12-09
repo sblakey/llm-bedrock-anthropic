@@ -258,6 +258,37 @@ def register_models(register):
             "bh-v4.5-global",
         ),
     )
+    register(
+        BedrockClaude(
+            "anthropic.claude-opus-4-5-20251101-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-opus",
+            "bedrock-claude-opus-v4.5",
+            "bo-v4.5",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "us.anthropic.claude-opus-4-5-20251101-v1:0", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-opus-us",
+            "bedrock-claude-opus-v4.5-us",
+            "bo-v4.5-us",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "global.anthropic.claude-opus-4-5-20251101-v1:0",
+            supports_attachments=True,
+        ),
+        aliases=(
+            "bedrock-claude-v4.5-opus-global",
+            "bedrock-claude-opus-v4.5-global",
+            "bo-v4.5-global",
+        ),
+    )
 
 
 class BedrockClaude(llm.Model):
