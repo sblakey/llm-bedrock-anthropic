@@ -298,6 +298,26 @@ def register_models(register):
             "bo-v4.6-global",
         ),
     )
+    register(
+        BedrockClaude(
+            "us.anthropic.claude-sonnet-4-6", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.6-sonnet-us",
+            "bedrock-claude-sonnet-v4.6-us",
+            "bc-v4.6-us",
+        ),
+    )
+    register(
+        BedrockClaude(
+            "global.anthropic.claude-sonnet-4-6", supports_attachments=True
+        ),
+        aliases=(
+            "bedrock-claude-v4.6-sonnet-global",
+            "bedrock-claude-sonnet-v4.6-global",
+            "bc-v4.6-global",
+        ),
+    )
 
 
 class BedrockClaude(llm.Model):
