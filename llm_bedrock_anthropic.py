@@ -678,7 +678,7 @@ class BedrockClaude(llm.Model):
         # so what we do instead is put what would be the system prompt in the first line of the
         # `Human` prompt, as recommended in the documentation. This enables us to effectively use the
         #  `-s`, `-t` and `--save` flags.
-        bedrock_model_id = prompt.options.bedrock_model_id or self.model_id
+        bedrock_model_id = prompt.options.bedrock_model_id or os.environ.get("LLM_BEDROCK_MODEL_ID") or self.model_id
 
         if prompt.system and self.model_id in [
             "anthropic.claude-v2",

@@ -56,12 +56,21 @@ H I J
 
 Can be a base model ID or ARN from https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns
 
-Can also be an ARN of provisioned throughput for a base or custom model.
+Can also be an ARN of provisioned throughput for a base or custom model, or an application inference profile ARN.
 
 Use it like this:
 ```bash
 llm -m bedrock-claude-haiku -o bedrock_model_id anthropic.claude-3-sonnet-20240229-v1:0 "Remind me how to post a new version to PyPI"
 ```
+
+You can also set the `LLM_BEDROCK_MODEL_ID` environment variable to apply the override globally. This is useful when using tools built on top of `llm` that don't expose the `-o` flag (e.g. `llm cmd`), or when routing all requests through an [application inference profile](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-create.html).
+
+```bash
+export LLM_BEDROCK_MODEL_ID='arn:aws:bedrock:us-west-2:123456789012:inference-profile/my-profile'
+llm -m bedrock-claude "Hello"
+```
+
+The `-o bedrock_model_id` option takes precedence over the environment variable.
 - `bedrock_attach`: allows you to attach one or more (comma-separated) image or document files to your prompt.
 
 See the Amazon Bedrock documentation for details about which file types are supported with which models: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html
